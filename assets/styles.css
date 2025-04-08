@@ -1,41 +1,176 @@
 /* assets/styles.css */
+/* Base Styles */
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Segoe UI', Arial, sans-serif;
     margin: 0;
-    padding: 20px;
+    background-color: #f5f6fa;
+    color: #2c3e50;
 }
 
-.tab-content {
-    padding: 20px;
-}
-
-h3 {
-    color: black;
-    font-weight: bold;
-    text-align: center;
+/* Security Compliance Styles */
+.compliance-modal .modal-content {
+    border-radius: 12px;
     border: 2px solid #c0392b;
-    background-color: #ffe6e6;
-    padding: 10px 20px;
-    border-radius: 8px;
-    margin-bottom: 30px;
 }
 
-.legend {
-    background-color: #f8f9fa;
-    padding: 15px;
-    border-radius: 5px;
-    margin-top: 20px;
+.compliance-header {
+    color: #c0392b;
+    font-weight: 700;
 }
 
-.graph-container {
-    margin-top: 20px;
+.compliance-subheader {
+    color: #2c3e50;
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
 }
 
-.card {
-    background-color: white;
+.compliance-list {
+    list-style-type: none;
+    padding-left: 1.5rem;
+}
+
+.compliance-item {
+    position: relative;
+    margin-bottom: 0.8rem;
+    padding-left: 1.5rem;
+}
+
+.compliance-item::before {
+    content: "•";
+    color: #c0392b;
+    position: absolute;
+    left: 0;
+    font-size: 1.2rem;
+}
+
+.badge-container {
+    display: flex;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin: 1rem 0;
+}
+
+.security-badge {
+    background-color: #c0392b15;
+    color: #c0392b;
+    border-radius: 20px;
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    border: 1px solid #c0392b30;
+}
+
+.audit-timeline {
+    border-left: 3px solid #c0392b;
+    padding-left: 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.audit-item {
+    margin: 0.8rem 0;
+    position: relative;
+    padding-left: 1rem;
+}
+
+.audit-item::before {
+    content: "▹";
+    color: #c0392b;
+    position: absolute;
+    left: 0;
+}
+
+/* Existing Styles (updated) */
+.app-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    background: #ffffff;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.08);
     padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    text-align: center;
-    flex: 1;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
 }
+
+.sidebar-footer {
+    margin-top: auto;
+    padding: 20px 0 0;
+}
+
+.footer-text {
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.footer-text:hover {
+    color: #a93226;
+}
+
+/* Responsive Design */
+@media (max-width: 992px) {
+    .app-sidebar {
+        width: 240px;
+    }
+    
+    .main-content-container {
+        margin-left: 260px;
+    }
+}
+
+@media (max-width: 768px) {
+    .app-sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+        box-shadow: none;
+    }
+    
+    .main-content-container {
+        margin-left: 0;
+        padding: 20px;
+    }
+    
+    .compliance-modal .modal-dialog {
+        margin: 20px;
+    }
+}
+.sidebar-hidden {
+    display: none !important;
+}
+/* Toggle arrow for sidebar */
+.sidebar-toggle-arrow {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 5px 10px;
+    cursor: pointer;
+    z-index: 1100;
+    transition: left 0.3s ease;
+}
+
+/* When the sidebar is visible, position arrow to the right of the sidebar */
+.sidebar-visible .sidebar-toggle-arrow {
+    left: 280px; /* match sidebar width */
+}
+
+/* When the sidebar is hidden, position arrow near left edge */
+.sidebar-hidden .sidebar-toggle-arrow {
+    left: 0;
+}
+
+/* Existing Components (keep these) */
+.page-header { /* ... */ }
+.nav-link { /* ... */ }
+.metrics-grid { /* ... */ }
+/* ... other existing styles ... */
+/* Existing Styles (keep these) */
+.tab-content { padding: 20px; }
+.graph-container { margin-top: 20px; }
+.card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+.metrics-grid { display: grid; gap: 15px; grid-template-columns: repeat(2, 1fr); }
+.filter-group { margin-bottom: 25px; }
+.date-picker { margin-bottom: 15px; }
