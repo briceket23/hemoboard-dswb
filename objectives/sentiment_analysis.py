@@ -183,4 +183,4 @@ if __name__ == '__main__':
     app = dash.Dash(__name__, suppress_callback_exceptions=True)
     # Pour la démonstration, nous utilisons ce layout directement.
     app.layout = get_sentiment_layout()
-    app.run_server(debug=True)
+    app.run(debug=True)

@@ -1,247 +1,316 @@
-# objectives/advanced_map.py
-
 import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, Input, Output
 import pandas as pd
 import plotly.express as px
+import folium
+from folium.plugins import MarkerCluster
 from typing import Optional
+import re
+import os
+import time
+from geopy.geocoders import Nominatim
 
-# Global cache for the map DataFrame
-_CACHED_MAP_DF: Optional[pd.DataFrame] = None
-
-def load_data(file_path: str = "data/blood_data_geocoded.csv") -> pd.DataFrame:
+#############################################
+# UTILITIES & HELPER FUNCTIONS
+#############################################
+def clean_numeric_column(series: pd.Series) -> pd.Series:
     """
-    Load and clean the geocoded blood donation data.
+    Convert numeric strings that may use commas as a decimal separator.
+    """
+    return pd.to_numeric(series.astype(str).str.replace(',', '.'), errors='coerce')
+
+#############################################
+# MAP DATA FUNCTIONS (FIRST Script – only the map uses this)
+#############################################
+def load_map_data(file_path: str = "data/blood_data_geocoded.csv") -> pd.DataFrame:
+    """
+    Loads and cleans the blood donation geocoded data used for the map.
     
-    Expected columns: 'lat', 'lon', 'ÉLIGIBILITÉ_AU_DON.', 'Age', 'Genre_', 'Taux_d’hémoglobine_'
-    
-    Args:
-        file_path: Path to the CSV file.
-    
+    Expected columns include:
+      - 'lat'
+      - 'lon'
+      - 'ÉLIGIBILITÉ_AU_DON.'
+      - (optional) 'Age', 'Genre_', etc.
+      
     Returns:
-        A pandas DataFrame with cleaned donor map data.
+        A cleaned pandas DataFrame.
     """
-    global _CACHED_MAP_DF
-    if _CACHED_MAP_DF is not None:
-        return _CACHED_MAP_DF.copy()
     try:
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, encoding='utf-8')
     except Exception as e:
         raise FileNotFoundError(f"Error loading {file_path}: {e}")
 
-    # Create a boolean 'eligible' column by standardizing the eligibility text.
-    df['eligible'] = df['ÉLIGIBILITÉ_AU_DON.'].str.strip().str.lower() == "eligible"
-    # Drop rows missing latitude or longitude.
+    df.columns = [col.strip() for col in df.columns]
+
+    # Standardize the eligibility column if available.
+    if "ÉLIGIBILITÉ_AU_DON." in df.columns:
+        df['eligible'] = df["ÉLIGIBILITÉ_AU_DON."].str.strip().str.lower() == "eligible"
+    else:
+        df['eligible'] = False
+
+    # Drop rows missing coordinates.
     df = df.dropna(subset=["lat", "lon"])
-    # Ensure that numeric columns are properly typed.
-    df["Age"] = pd.to_numeric(df["Age"], errors="coerce")
-    df["Taux_d’hémoglobine_"] = pd.to_numeric(df["Taux_d’hémoglobine_"], errors="coerce")
-    
-    _CACHED_MAP_DF = df.copy()
+
+    if "Age" in df.columns:
+        df["Age"] = pd.to_numeric(df["Age"], errors="coerce")
+    if "Taux_d’hémoglobine_" in df.columns:
+        df["Taux_d’hémoglobine_"] = clean_numeric_column(df["Taux_d’hémoglobine_"])
+    if "Genre_" in df.columns:
+        df["Genre_"] = df["Genre_"].str.strip().str.lower()
+
     return df.copy()
 
-def get_advanced_map_layout(start_date: Optional[str] = None, end_date: Optional[str] = None) -> html.Div:
+def create_folium_map(df: pd.DataFrame) -> str:
     """
-    Build the Dash layout for the advanced interactive donor map.
-    
-    Args:
-        start_date: (Not used yet) Optionally filter by start date.
-        end_date: (Not used yet) Optionally filter by end date.
+    Creates a Folium map from the DataFrame, using MarkerCluster
+    to cluster points. Each marker is styled with an icon whose color 
+    depends on the donor’s eligibility (from "ÉLIGIBILITÉ_AU_DON."). 
+    Markers with an eligibility of "Eligible" (case-insensitive) are green,
+    all others are red.
     
     Returns:
-        A Dash HTML layout (Div) containing filters and the map graph.
+        HTML representation of the Folium map.
     """
-    df = load_data()
+    if df.empty:
+        m = folium.Map(location=[0, 0], zoom_start=2)
+    else:
+        # Center the map over the data points.
+        map_center = [df["lat"].mean(), df["lon"].mean()]
+        m = folium.Map(location=map_center, zoom_start=6)
+        
+        # Create a MarkerCluster instance.
+        marker_cluster = MarkerCluster(disableClusteringAtZoom=12).add_to(m)
+        
+        for _, row in df.iterrows():
+        # Determine icon color based on eligibility.
+            eligibility_text = row.get("ÉLIGIBILITÉ_AU_DON.", "N/A").strip()
+            if eligibility_text.lower() == "eligible":
+                icon_color = "green"
+                colored_eligibility = f"<span style='color: green;'>{eligibility_text}</span>"
+            else:
+                icon_color = "red"
+                colored_eligibility = f"<span style='color: red;'>{eligibility_text}</span>"
+            
+        # Clean extra spaces in the 'profession' field if present.
+            profession = row.get("profession", "Inconnu")
+            profession = re.sub(r'\s+', ' ', str(profession)).strip()
+        
+        # Build popup content with conditional formatting on "Éligibilité"
+            popup_content = (
+                f"<b>Age:</b> {row.get('Age', 'N/A')}<br>"
+                f"<b>Genre:</b> {row.get('Genre_', 'N/A')}<br>"
+                f"<b>Hémoglobine:</b> {row.get('Taux_d’hémoglobine_', 'N/A')}<br>"
+                f"<b>Éligibilité:</b> {colored_eligibility}<br>"
+                f"<b>Arrondissement:</b> {row.get('Arrondissement_de_résidence_', 'N/A')}<br>"
+                f"<b>Groupe sanguin:</b> <span style='color: red;'>à compléter</span><br>"
+            )
+        
+        # Create a marker with the determined icon color.
+            folium.Marker(
+                location=[row["lat"], row["lon"]],
+                popup=popup_content,
+                icon=folium.Icon(color=icon_color, icon="info-sign")
+            ).add_to(marker_cluster)
+
+    return m._repr_html_()
+
+#############################################
+# KPI DATA FUNCTIONS (SECOND Script – all other sections use this)
+#############################################
+def nettoyer_arrondissement(val):
+    """
+    Clean and standardize arrondissement names.
+    """
+    if pd.isna(val):
+        return "Douala 1"
     
-    # Build filter controls for age, gender, eligibility, hemoglobin level, clustering, and map style
-    layout = dbc.Container([
-        dbc.Row(html.H1("Advanced Donor Map with Clustering and Interactive Filters"), className="my-3"),
-        dbc.Row([
-            dbc.Col([
-                html.H4("Filters"),
-                
-                # Age filter
-                html.Label("Age Range"),
-                dcc.RangeSlider(
-                    id="age-slider",
-                    min=int(df["Age"].min()),
-                    max=int(df["Age"].max()),
-                    value=[int(df["Age"].min()), int(df["Age"].max())],
-                    marks={i: str(i) for i in range(int(df["Age"].min()), int(df["Age"].max())+1, 5)}
-                ),
-                html.Br(),
-                
-                # Hemoglobin filter
-                html.Label("Hemoglobin Level"),
-                dcc.RangeSlider(
-                    id="hemoglobin-slider",
-                    min=int(df["Taux_d’hémoglobine_"].min()),
-                    max=int(df["Taux_d’hémoglobine_"].max()),
-                    value=[int(df["Taux_d’hémoglobine_"].min()), int(df["Taux_d’hémoglobine_"].max())],
-                    marks={i: str(i) for i in range(int(df["Taux_d’hémoglobine_"].min()),
-                                                      int(df["Taux_d’hémoglobine_"].max())+1, 5)}
-                ),
-                html.Br(),
-                
-                # Gender filter
-                html.Label("Gender"),
-                dcc.Dropdown(
-                    id="gender-dropdown",
-                    options=[{"label": g, "value": g} for g in sorted(df["Genre_"].dropna().unique())],
-                    value=sorted(df["Genre_"].dropna().unique()),
-                    multi=True
-                ),
-                html.Br(),
-                
-                # Eligibility filter
-                html.Label("Eligibility"),
-                dcc.RadioItems(
-                    id="eligibility-radio",
-                    options=[
-                        {"label": "All", "value": "all"},
-                        {"label": "Eligible", "value": "eligible"},
-                        {"label": "Not Eligible", "value": "not_eligible"}
-                    ],
-                    value="all",
-                    labelStyle={"display": "inline-block", "margin-right": "10px"}
-                ),
-                html.Br(),
-                
-                # Clustering toggle
-                html.Label("Point Clustering"),
-                dcc.RadioItems(
-                    id="clustering-toggle",
-                    options=[
-                        {"label": "Enable Clustering", "value": "enable"},
-                        {"label": "Disable Clustering", "value": "disable"}
-                    ],
-                    value="enable",
-                    labelStyle={"display": "inline-block", "margin-right": "10px"}
-                ),
-                html.Br(),
-                
-                # Map style selector
-                html.Label("Map Style"),
-                dcc.Dropdown(
-                    id="map-style-dropdown",
-                    options=[
-                        {"label": "Carto Positron", "value": "carto-positron"},
-                        {"label": "Open Street Map", "value": "open-street-map"},
-                        {"label": "Stamen Terrain", "value": "stamen-terrain"}
-                    ],
-                    value="carto-positron",
-                    clearable=False
-                )
-            ], width=3),
-            dbc.Col([
-                html.Div(id="donor-count", style={"marginBottom": "10px", "fontWeight": "bold"}),
-                dcc.Graph(id="advanced-map-graph")
-            ], width=9)
-        ])
-    ], fluid=True)
+    val = val.strip().lower()
+    douala_1 = ["douala", "douala non precise", "douala (non précisé )", "pas précisé",
+                "pas precise", "pas precise ", "pas mentionné", "non précisé",
+                "non precise", "non precisé", "ras", "ras ", "r a s", "r a s ",
+                "r a s ", "dcankongmondo", "deido", "pas mentionne"]
+    douala_2 = ["douala 2"]
+    douala_3 = ["douala 3", "bomono ba mbegue", "oyack", "ngodi bakoko", "ngodi bakoko "]
+    douala_4 = ["douala 4", "boko"]
+    douala_5 = ["douala 5"]
+    douala_6 = ["douala 6"]
+
+    mapping = {
+        **dict.fromkeys(douala_1, "Douala 1"),
+        **dict.fromkeys(douala_2, "Douala 2"),
+        **dict.fromkeys(douala_3, "Douala 3"),
+        **dict.fromkeys(douala_4, "Douala 4"),
+        **dict.fromkeys(douala_5, "Douala 5"),
+        **dict.fromkeys(douala_6, "Douala 6"),
+        "bafoussam": "Bafoussam",
+        "dschang": "Dschang",
+        "buea": "Buea",
+        "kribi": "Kribi",
+        "njombe": "Njombe",
+        "tiko": "Tiko",
+        "edea": "Edea",
+        "manjo": "Manjo",
+        "west": "Région de l'Ouest",
+        "yaoundé": "Yaoundé",
+        "nkouabang": "Yaoundé",
+        "yaounde": "Yaoundé",
+        "meiganga": "Meiganga",
+        "batie": "Batié",
+        "sud ouest tombel": "Tombel",
+        "limbe": "Limbe",
+        "limbe ": "Limbe"
+    }
+    return mapping.get(val, val.title())
+
+def geocode_location(location):
+    """
+    Geocodes a given location using Nominatim.
+    A short delay is included to avoid overwhelming the geocoding service.
+    """
+    geolocator = Nominatim(user_agent="blood_donation_app")
+    try:
+        time.sleep(2)  # Avoid service blocking.
+        geo = geolocator.geocode(location + ", Cameroun")
+        return (geo.latitude, geo.longitude) if geo else (None, None)
+    except Exception as e:
+        return (None, None)
+
+def load_and_prepare_kpi_data(start_date=None, end_date=None):
+    """
+    Loads the cleaned donor data (from 2019) and prepares the KPI statistics.
+    Also performs intelligent caching of arrondissement geocoding.
     
+    Returns:
+        df: DataFrame with donor data.
+        district_stats: Aggregated stats per arrondissement.
+    """
+    df = pd.read_csv('data/Candidat_au_don_2019_cleaned.csv', sep=';')
+    df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_").str.replace("’", "'")
+    df['arrondissement_de_résidence'] = df['arrondissement_de_résidence'].apply(nettoyer_arrondissement)
+    cache_path = 'data/geocoded_coords.csv'
+
+    if os.path.exists(cache_path):
+        coords_df = pd.read_csv(cache_path)
+    else:
+        coords_df = pd.DataFrame(columns=["arrondissement_de_résidence", "latitude", "longitude"])
+
+    arrondissements_existants = set(coords_df["arrondissement_de_résidence"].dropna())
+    arrondissements_dans_data = set(df["arrondissement_de_résidence"].dropna())
+    nouveaux = list(arrondissements_dans_data - arrondissements_existants)
+
+    if nouveaux:
+        print(f"Geocoding {len(nouveaux)} new arrondissement(s)...")
+        nouveaux_coords = []
+        for loc in nouveaux:
+            lat, lon = geocode_location(loc)
+            nouveaux_coords.append({
+                "arrondissement_de_résidence": loc,
+                "latitude": lat,
+                "longitude": lon
+            })
+        nouveaux_df = pd.DataFrame(nouveaux_coords)
+        coords_df = pd.concat([coords_df, nouveaux_df], ignore_index=True)
+        coords_df.to_csv(cache_path, index=False)
+        print("Cache updated.")
+
+    df = pd.merge(df, coords_df, on='arrondissement_de_résidence', how='left')
+    df = df.dropna(subset=['latitude', 'longitude'])
+
+    district_stats = df.groupby('arrondissement_de_résidence').agg(
+        total_candidats=('éligibilité_au_don.', 'count'),
+        pourcentage_eligibles=('éligibilité_au_don.', lambda x: (x == 'eligible').mean() * 100),
+        nombre_hommes=('genre', lambda x: (x == 'homme').sum()),
+        latitude=('latitude', 'first'),
+        longitude=('longitude', 'first')
+    ).reset_index()
+    print("KPI data loaded:", district_stats.shape)
+    return df, district_stats
+
+#############################################
+# COMBINED DASH LAYOUT
+#############################################
+def get_map_layout(start_date=None, end_date=None):
+    """
+    Build the combined dashboard layout:
+      - KPI cards/statistics from the second data source.
+      - A Folium map (embedded via an iframe) using the first data source that clusters markers.
+    """
+    # Load and compute KPI stats using the second script’s data.
+    df_kpi, district_stats = load_and_prepare_kpi_data(start_date, end_date)
+    total_donors = len(df_kpi)
+    taux_eligibilite = round((df_kpi["éligibilité_au_don."] == "eligible").mean() * 100, 1)
+    total_hommes = (df_kpi["genre"] == "homme").sum()
+    total_femmes = (df_kpi["genre"] == "femme").sum()
+    
+    # Load map data from the first script’s CSV.
+    df_map = load_map_data("data/blood_data_geocoded.csv")
+    folium_map_html = create_folium_map(df_map)
+    
+    layout = html.Div([
+        html.H3('Donor Distribution Dashboard'),
+        dcc.DatePickerRange(
+            id='date-picker-range',
+            display_format='DD-MM-YYYY',
+            start_date_placeholder_text='Date début',
+            end_date_placeholder_text='Date fin',
+            style={"margin-bottom": "20px"}
+        ),
+        # KPI Cards Section
+        html.Div([
+            html.Div([
+                html.H4("🧍‍ Total Donors"),
+                html.H2(f"{total_donors}")
+            ], className="card", style={
+                "padding": "10px", "border": "1px solid #ddd", "border-radius": "5px"
+            }),
+            html.Div([
+                html.H4("🩸 Eligibility Rate"),
+                html.H2(f"{taux_eligibilite}%")
+            ], className="card", style={
+                "padding": "10px", "border": "1px solid #ddd", "border-radius": "5px"
+            }),
+            html.Div([
+                html.H4("👨 Men / 👩 Women"),
+                html.H2(f"{total_hommes} / {total_femmes}")
+            ], className="card", style={
+                "padding": "10px", "border": "1px solid #ddd", "border-radius": "5px"
+            })
+        ], style={"display": "flex", "gap": "20px"}),
+        html.Br(),
+        # Folium Map Section with clustering
+        html.Div([
+            html.Iframe(
+                srcDoc=folium_map_html,
+                width="100%",
+                height="600",
+                style={"border": "none"}
+            )
+        ], className="graph-container"),
+        # Legend Section
+        html.Div([
+            html.H4('Legend', style={"font-size": "16px", "margin-bottom": "5px"}),
+            html.P("This map shows donor locations using a clustering feature to group nearby points.",
+                   style={"font-size": "14px", "margin": "0"}),
+            html.P("Markers are colored based on eligibility (green = Eligible, red = Non-eligible).",
+                   style={"font-size": "14px", "margin": "0"}),
+            html.P("Click on a cluster to zoom in and reveal individual markers.",
+                   style={"font-size": "14px", "margin": "0"})
+        ], className="legend", style={
+            "background-color": "#f9f9f9",
+            "padding": "10px",
+            "border-radius": "5px",
+            "margin-top": "20px",
+            "font-size": "14px",
+            "max-width": "600px"
+        })
+    ])
     return layout
 
-def get_map_layout() -> html.Div:
-    """
-    Build a basic donor distribution map layout.
-    
-    Returns:
-        A Dash HTML Div containing the donor map.
-    """
-    df = load_data()
-    fig = px.scatter_mapbox(
-        df,
-        lat="lat",
-        lon="lon",
-        hover_name="Genre_",
-        hover_data={"Age": True, "Taux_d’hémoglobine_": ":.1f", "eligible": True},
-        color="eligible",
-        color_discrete_map={True: "#2ecc71", False: "#e74c3c"},
-        size="Taux_d’hémoglobine_",
-        size_max=15,
-        zoom=5,
-        height=700
-    )
-    fig.update_layout(
-        mapbox_style="carto-positron",
-        mapbox_center={"lat": df["lat"].mean(), "lon": df["lon"].mean()},
-        margin={"r": 0, "t": 40, "l": 0, "b": 0}
-    )
-    return html.Div([
-        html.H3("Donor Distribution Map"),
-        dcc.Graph(figure=fig)
-    ])
-
-def init_callbacks(app: dash.Dash) -> None:
-    """
-    Initialize Dash callbacks for interactive filtering of the advanced map.
-    
-    Args:
-        app: The Dash application instance.
-    """
-    @app.callback(
-        [Output("advanced-map-graph", "figure"),
-         Output("donor-count", "children")],
-        [Input("age-slider", "value"),
-         Input("hemoglobin-slider", "value"),
-         Input("gender-dropdown", "value"),
-         Input("eligibility-radio", "value"),
-         Input("clustering-toggle", "value"),
-         Input("map-style-dropdown", "value")]
-    )
-    def update_map(age_range, hemoglobin_range, genders, eligibility_filter, clustering_toggle, map_style):
-        df = load_data()
-
-        # Combine filter conditions into a single mask.
-        mask = df["Age"].between(age_range[0], age_range[1]) & \
-               df["Taux_d’hémoglobine_"].between(hemoglobin_range[0], hemoglobin_range[1]) & \
-               df["Genre_"].isin(genders)
-        if eligibility_filter == "eligible":
-            mask &= (df["eligible"] == True)
-        elif eligibility_filter == "not_eligible":
-            mask &= (df["eligible"] == False)
-        filtered = df[mask]
-
-        donor_count_text = f"Total donors displayed: {len(filtered)}"
-
-        # Create the scatter mapbox figure with filtered data.
-        fig = px.scatter_mapbox(
-            filtered,
-            lat="lat",
-            lon="lon",
-            hover_name="Genre_",
-            hover_data={"Age": True, "Taux_d’hémoglobine_": ":.1f", "eligible": True},
-            color="eligible",
-            color_discrete_map={True: "#2ecc71", False: "#e74c3c"},
-            size="Taux_d’hémoglobine_",
-            size_max=15,
-            zoom=5,
-            height=700
-        )
-        # Enable clustering if selected.
-        if clustering_toggle == "enable":
-            fig.update_traces(
-                cluster={
-                    'enabled': True,
-                    'size': 20,
-                    'step': [10, 30, 50],
-                    'color': 'rgba(231, 76, 60, 0.3)'
-                }
-            )
-        # Update layout with selected map style.
-        fig.update_layout(
-            mapbox_style=map_style,
-            mapbox_center={"lat": df["lat"].mean(), "lon": df["lon"].mean()},
-            margin={"r": 0, "t": 40, "l": 0, "b": 0},
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        return fig, donor_count_text
-
+#############################################
+# MAIN: INITIALIZE THE DASH APP
+#############################################
 if __name__ == "__main__":
-    # Standalone execution for testing the advanced map layout.
     app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-    app.layout = get_advanced_map_layout()
-    init_callbacks(app)
-    app.run(debug=True)
+    app.layout = get_map_layout()
+    app.run_server(debug=True)
