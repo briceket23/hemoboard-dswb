@@ -19,7 +19,7 @@ from objectives.health_conditions import get_health_conditions_layout
 from objectives.donor_clustering import get_clustering_layout
 from objectives.campaign_effectiveness import get_campaign_layout
 from objectives.donor_retention import get_retention_layout
-from objectives.sentiment_analysis import get_sentiment_layout
+from objectives.sentiment_analysis__11 import get_sentiment_layout
 from objectives.eligibility_prediction import get_prediction_layout
 
 # Security Compliance Modal (unchanged)
