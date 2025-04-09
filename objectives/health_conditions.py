@@ -191,3 +191,4 @@ def get_health_conditions_layout(start_date=None, end_date=None):
             html.P("3. Le dernier graphique montre la répartition des statuts selon le genre avec effectifs et pourcentages."),
         ], style={"marginTop": "30px", **card_style})
     ])
+layout = get_health_conditions_layout(start_date=None, end_date=None)

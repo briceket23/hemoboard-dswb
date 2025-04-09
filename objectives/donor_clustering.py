@@ -35,8 +35,12 @@ def prepare_clustering_data(start_date=None, end_date=None):
     }, inplace=True)
 
     if start_date and end_date:
-        df["date_de_remplissage_de_la_fiche"] = pd.to_datetime(df["date_de_remplissage_de_la_fiche"])
-        df = df[(df["date_de_remplissage_de_la_fiche"] >= start_date) & (df["date_de_remplissage_de_la_fiche"] <= end_date)]
+        df["Date_de_remplissage_de_la_fiche"] = pd.to_datetime(df["Date_de_remplissage_de_la_fiche"])
+        df = df[(df["Date_de_remplissage_de_la_fiche"] >= start_date) & (df["Date_de_remplissage_de_la_fiche"] <= end_date)]
+
+    # Check if the DataFrame is empty after filtering
+    if df.empty:
+        return pd.DataFrame(), pd.DataFrame()
 
     df = df[["age", "poids", "taille", "genre", "deja_donne", "taux_hb"]].copy()
 
@@ -54,10 +58,13 @@ def prepare_clustering_data(start_date=None, end_date=None):
     ])
 
     return df_scaled.round(3), df.round(1)
-
 # Étape 2 : Clustering + Graphe
 
 def create_cluster_figure(df_scaled, original_df, n_clusters=3):
+    # Check if the input DataFrame is empty
+    if df_scaled.empty:
+        raise ValueError("Cannot create clusters: Input DataFrame is empty.")
+
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
     clusters = kmeans.fit_predict(df_scaled)
 
@@ -108,6 +115,13 @@ def generate_cluster_summary(original_df):
 
 def get_clustering_layout(start_date=None, end_date=None):
     df_scaled, original_df = prepare_clustering_data(start_date, end_date)
+
+    # Check if the data is empty
+    if df_scaled.empty or original_df.empty:
+        return html.Div([
+            html.H3("No data available for the selected date range.", style={"color": "red", "textAlign": "center"})
+        ])
+
     fig, updated_df, scaled_df = create_cluster_figure(df_scaled.copy(), original_df.copy(), 3)
     summary_df, ideal_text = generate_cluster_summary(updated_df)
     columns = [{"name": i, "id": i} for i in summary_df.columns]

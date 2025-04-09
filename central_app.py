@@ -11,7 +11,7 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
     meta_tags=[{'name': 'viewport', 'content': 'width=device-width, initial-scale=1.0'}]
 )
-app.title = "HEMOBOARD-DSWB"
+app.title = "HEMOBOARD"
 
 # Import page layouts
 from objectives.map_donor_distribution import get_map_layout
@@ -19,7 +19,7 @@ from objectives.health_conditions import get_health_conditions_layout
 from objectives.donor_clustering import get_clustering_layout
 from objectives.campaign_effectiveness import get_campaign_layout
 from objectives.donor_retention import get_retention_layout
-from objectives.sentiment_analysis__11 import get_sentiment_layout
+from objectives.sentiment_analysis import get_sentiment_layout
 from objectives.eligibility_prediction import get_prediction_layout
 
 # Security Compliance Modal (unchanged)
@@ -192,22 +192,110 @@ def update_toggle_arrow_style(is_visible):
 # Routing callback: Render page content based on the URL.
 @app.callback(Output("page-content", "children"), [Input("url", "pathname")])
 def render_page_content(pathname):
-    pages = {
-        "/": {"layout": get_map_layout(), "title": "Donor Distribution Map"},
-        "/health": {"layout": get_health_conditions_layout(), "title": "Health Conditions Analysis"},
-        "/clustering": {"layout": get_clustering_layout(), "title": "Donor Clustering"},
-        "/campaign": {"layout": get_campaign_layout(), "title": "Campaign Effectiveness"},
-        "/retention": {"layout": get_retention_layout(), "title": "Donor Retention Analysis"},
-        "/sentiment": {"layout": get_sentiment_layout(), "title": "Sentiment Analysis"},
-        "/prediction": {"layout": get_prediction_layout(), "title": "Eligibility Prediction"}
-    }
-    
-    if pathname in pages:
+    if pathname == "/":
         return html.Div([
-            html.H1(pages[pathname]["title"], className="page-header"),
-            pages[pathname]["layout"]
+            html.Div([
+                html.Label("📅 Filtrer par date de remplissage :", style={"font-weight": "bold", "margin-right": "10px"}),
+                dcc.DatePickerRange(
+                    id='date-range-picker',
+                    start_date_placeholder_text="Début",
+                    end_date_placeholder_text="Fin",
+                    display_format='YYYY-MM-DD',
+                    style={"padding": "10px"}
+                )
+            ], style={"margin-bottom": "20px", "display": "flex", "align-items": "center", "gap": "10px"}),
+
+            html.Div(id="map-container", children=get_map_layout(None, None))
         ])
-    return html.Div([html.H1("404: Page Not Found", className="error-header")])
+
+    elif pathname == "/health":
+        return html.Div([
+            html.Div([
+                html.Label("📅 Filtrer par date de remplissage :", style={"font-weight": "bold", "margin-right": "10px"}),
+                dcc.DatePickerRange(
+                    id='health-date-picker',
+                    start_date_placeholder_text="Début",
+                    end_date_placeholder_text="Fin",
+                    display_format='YYYY-MM-DD',
+                    style={"padding": "10px"}
+                )
+            ], style={"margin-bottom": "20px", "display": "flex", "align-items": "center", "gap": "10px"}),
+
+            html.Div(id="health-container", children=get_health_conditions_layout(None, None))
+        ])
+
+    elif pathname == "/clustering":
+        return html.Div([
+            html.Div([
+                html.Label("📅 Filtrer par date de remplissage :", style={"font-weight": "bold", "margin-right": "10px"}),
+                dcc.DatePickerRange(
+                    id='cluster-date-picker',
+                    start_date_placeholder_text="Début",
+                    end_date_placeholder_text="Fin",
+                    display_format='YYYY-MM-DD',
+                    style={"padding": "10px"}
+                )
+            ], style={"margin-bottom": "20px", "display": "flex", "align-items": "center", "gap": "10px"}),
+
+            html.Div(id="cluster-container")
+        ])
+    elif pathname == "/campaign":
+        return get_campaign_layout()
+    elif pathname == "/retention":
+        return html.Div([
+            html.Div([
+                html.Label("📅 Filtrer par date :", style={"font-weight": "bold", "margin-right": "10px"}),
+                dcc.DatePickerRange(
+                    id='retention-date-picker',
+                    start_date_placeholder_text="Début",
+                    end_date_placeholder_text="Fin",
+                    display_format='YYYY-MM-DD',
+                    style={"padding": "10px"}
+                )
+            ], style={"margin-bottom": "20px", "display": "flex", "align-items": "center", "gap": "10px"}),
+    
+            html.Div(id="retention-container", children=get_retention_layout(None, None))
+        ])
+        
+
+    elif pathname == "/sentiment":
+        return get_sentiment_layout()
+    elif pathname == "/prediction":
+        return get_prediction_layout()
+    else:
+        return html.H1("404: Page introuvable")
+
+@app.callback(
+    Output("map-container", "children"),
+    Input("date-range-picker", "start_date"),
+    Input("date-range-picker", "end_date")
+)
+def update_map_layout(start_date, end_date):
+    return get_map_layout(start_date, end_date)
+
+@app.callback(
+    Output("health-container", "children"),
+    Input("health-date-picker", "start_date"),
+    Input("health-date-picker", "end_date")
+)
+def update_health_layout(start_date, end_date):
+    return get_health_conditions_layout(start_date, end_date)
+
+@app.callback(
+    Output("cluster-container", "children"),
+    Input("cluster-date-picker", "start_date"),
+    Input("cluster-date-picker", "end_date")
+)
+def update_cluster_layout(start_date, end_date):
+    return get_clustering_layout(start_date, end_date)
+
+@app.callback(
+    Output("retention-container", "children"),
+    Input("retention-date-picker", "start_date"),
+    Input("retention-date-picker", "end_date")
+)
+def update_retention_layout(start_date, end_date):
+    return get_retention_layout(start_date, end_date)
 
 if __name__ == "__main__":
     app.run(debug=True, dev_tools_props_check=False)

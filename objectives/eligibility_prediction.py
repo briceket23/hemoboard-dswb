@@ -95,18 +95,18 @@ def get_prediction_layout():
     return html.Div([
         html.H3("🔮 Prédiction de l'Éligibilité au Don", style={"marginBottom": "30px"}),
 
-        html.Div(className="card", children=[
-            html.Label("Âge"),
-            dcc.Input(id="input-age", type="number", min=18, max=100, step=1),
+        html.Div(className="card mt-3", children=[
+            html.Label("Âge",className="form-label"),
+            dcc.Input(id="input-age", type="number", min=18, max=100, step=1, className="form-control"),
 
             html.Label("Poids (kg)"),
-            dcc.Input(id="input-weight", type="number", min=30, max=200, step=0.1),
+            dcc.Input(id="input-weight", type="number", min=30, max=200, step=0.1, className="form-control"),
 
             html.Label("Taille (cm)"),
-            dcc.Input(id="input-height", type="number", min=100, max=220, step=1),
+            dcc.Input(id="input-height", type="number", min=100, max=220, step=1, className="form-control"),
 
             html.Label("Taux d’hémoglobine (g/dl)"),
-            dcc.Input(id="input-hb", type="number", min=5, max=20, step=0.1),
+            dcc.Input(id="input-hb", type="number", min=5, max=20, step=0.1, className="form-control"),
 
             html.Label("Genre"),
             dcc.Dropdown(
